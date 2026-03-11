@@ -25,7 +25,8 @@ class TCGenerator:
                 json_text = self._extract_json_text(raw)
                 parsed = json.loads(json_text)
                 items = parsed if isinstance(parsed, list) else [parsed]
-                cases = [TestCase.model_validate(item) for item in items]
+                normalized_items = [self._normalize_case_payload(item) for item in items]
+                cases = [TestCase.model_validate(item) for item in normalized_items]
                 return cases, False
             except (json.JSONDecodeError, ValidationError, TypeError, ValueError):
                 if attempt == attempts - 1:
@@ -38,9 +39,13 @@ class TCGenerator:
     def _build_prompt(self, chunks: list[ChunkMetadata], user_prompt: str) -> str:
         evidence = [chunk.model_dump() for chunk in chunks]
         return (
-            "Generate JSON array of test cases with fields: "
+            "Generate ONLY a valid JSON array. "
+            "No prose, no markdown, no code fences. "
+            "Each item must include fields: "
             "tc_id, requirement_id, feature_name, preconditions, test_steps, "
             "test_data, expected_result, test_type, priority, source_chunks, review_status. "
+            "Type constraints: preconditions=list[str], test_steps=list[str], test_data=list[str]. "
+            "review_status must be exactly 'draft'. "
             f"User prompt: {user_prompt}. "
             f"Evidence chunks: {evidence}"
         )
@@ -64,3 +69,29 @@ class TCGenerator:
             return cleaned[start_obj : end_obj + 1]
 
         return cleaned
+
+    def _normalize_case_payload(self, item: object) -> object:
+        if not isinstance(item, dict):
+            return item
+
+        normalized = dict(item)
+
+        preconditions = normalized.get("preconditions")
+        if isinstance(preconditions, str):
+            normalized["preconditions"] = [preconditions]
+
+        test_steps = normalized.get("test_steps")
+        if isinstance(test_steps, str):
+            normalized["test_steps"] = [test_steps]
+
+        test_data = normalized.get("test_data")
+        if isinstance(test_data, dict):
+            normalized["test_data"] = [f"{key}={value}" for key, value in test_data.items()]
+        elif isinstance(test_data, str):
+            normalized["test_data"] = [test_data]
+
+        review_status = normalized.get("review_status")
+        if isinstance(review_status, str) and review_status.lower() == "pending":
+            normalized["review_status"] = "draft"
+
+        return normalized

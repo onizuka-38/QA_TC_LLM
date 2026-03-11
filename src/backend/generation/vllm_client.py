@@ -24,6 +24,7 @@ class VLLMClient:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0,
+            "max_tokens": 800,
             "response_format": {"type": "json_object"},
         }
         headers = {"Authorization": f"Bearer {settings.vllm_api_key}"}
