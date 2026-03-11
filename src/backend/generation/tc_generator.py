@@ -58,6 +58,13 @@ class TCGenerator:
         # Remove optional reasoning tags.
         cleaned = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL | re.IGNORECASE).strip()
 
+        # Prefer full object when response is a single JSON object containing list fields.
+        if cleaned.startswith("{") and cleaned.endswith("}"):
+            return cleaned
+
+        if cleaned.startswith("[") and cleaned.endswith("]"):
+            return cleaned
+
         start_arr = cleaned.find("[")
         end_arr = cleaned.rfind("]")
         if start_arr != -1 and end_arr != -1 and end_arr > start_arr:
