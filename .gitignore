@@ -1,0 +1,26 @@
+# local env
+.env
+.venv/
+
+# model artifacts
+models/
+
+# runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# caches
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# logs / temp
+*.log
+*.tmp
+
+# local generated files
+tc_rtm.xlsx
+sample_req.xlsx

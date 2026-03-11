@@ -1,0 +1,223 @@
+# schema.md
+
+## 목적
+- `AGENTS.md`, `docs/QA_TC_AUTOMATION_TASK.md`, `research.md` 기준으로 MVP 스키마를 정의한다.
+- 원문 근거가 없는 항목은 확장하지 않고 `확인 필요`로 표시한다.
+
+## 입력 포맷 제약 (MVP)
+- 지원 업로드 포맷: `pdf`, `docx`, `xlsx`
+- 미지원 포맷(`txt` 등)은 업로드 단계에서 거부한다.
+- 생성 입력은 `문서(document_ids)` + `자연어(user_prompt)`를 함께 받는다.
+
+## 1) TC JSON Schema
+(근거: TASK 8장, 9장)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "test_case",
+  "type": "object",
+  "required": [
+    "tc_id",
+    "requirement_id",
+    "feature_name",
+    "preconditions",
+    "test_steps",
+    "test_data",
+    "expected_result",
+    "test_type",
+    "priority",
+    "source_chunks",
+    "review_status"
+  ],
+  "properties": {
+    "tc_id": { "type": "string", "minLength": 1 },
+    "requirement_id": { "type": "string", "minLength": 1 },
+    "feature_name": { "type": "string", "minLength": 1 },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "test_steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "test_data": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expected_result": { "type": "string", "minLength": 1 },
+    "test_type": { "type": "string", "minLength": 1 },
+    "priority": { "type": "string", "minLength": 1 },
+    "source_chunks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "review_status": { "$ref": "#/$defs/review_status_enum" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "review_status_enum": {
+      "type": "string",
+      "enum": ["draft", "in_review", "revised", "approved", "rejected", "확인 필요"]
+    }
+  }
+}
+```
+
+참고:
+- 내부 필드 `feature_name`은 Excel export 시 `Title` 컬럼으로 매핑한다.
+
+## 2) Chunk Metadata Schema
+(근거: TASK 4장, 7.3장, 10장, research.md)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "chunk_metadata",
+  "type": "object",
+  "required": [
+    "chunk_id",
+    "requirement_id",
+    "source_doc",
+    "chunk_type"
+  ],
+  "properties": {
+    "chunk_id": { "type": "string", "minLength": 1 },
+    "requirement_id": { "type": "string", "minLength": 1 },
+    "source_doc": { "type": "string", "minLength": 1 },
+    "source_location": {
+      "type": "string",
+      "description": "page/sheet/section 등. 상세 포맷은 확인 필요"
+    },
+    "section_title": { "type": "string" },
+    "chunk_type": {
+      "type": "string",
+      "enum": ["requirement", "function", "screen", "api", "exception", "확인 필요"]
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+## 3) Validation Result Schema
+(근거: TASK 9장)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "validation_result",
+  "type": "object",
+  "required": [
+    "tc_id",
+    "requirement_id",
+    "is_valid",
+    "checks",
+    "failure_action"
+  ],
+  "properties": {
+    "tc_id": { "type": "string", "minLength": 1 },
+    "requirement_id": { "type": "string", "minLength": 1 },
+    "is_valid": { "type": "boolean" },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "passed"],
+        "properties": {
+          "rule": { "type": "string", "minLength": 1 },
+          "passed": { "type": "boolean" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "failure_action": {
+      "type": "string",
+      "enum": ["regenerate", "wait_user_review", "none"]
+    }
+  },
+  "additionalProperties": false
+}
+```
+
+## 4) Review Status Enum
+(근거: TASK 7.6장 상태 + TASK 4장 `확인 필요`)
+
+```json
+{
+  "type": "string",
+  "enum": ["draft", "in_review", "revised", "approved", "rejected", "확인 필요"]
+}
+```
+
+## 5) RTM Column Definition
+(근거: TASK 10장)
+
+| column_name | type | required | description |
+|---|---|---|---|
+| requirement_id | string | Y | RTM 기준 키 |
+| tc_ids | array[string] | Y | 연결된 TC ID 목록 |
+| missing_requirement | boolean | Y | 요구사항 누락 여부 |
+| duplicate_link | boolean | Y | 중복 연결 여부 |
+| source_chunks | array[string] | N | 생성 근거 chunk 정보 (가능하면 연결) |
+
+참고:
+- `tc_ids` 저장 포맷(구분자 문자열 vs 배열)은 `확인 필요`
+- 누락/중복 표시의 시각화 방식은 `확인 필요`
+
+## 7) Excel TC Export Column Definition (회의 03.11 반영)
+
+| column_name | source_field | required | description |
+|---|---|---|---|
+| Requirement ID | requirement_id | Y | 요구사항 ID |
+| TestCase ID | tc_id | Y | 테스트케이스 ID |
+| Title | feature_name | Y | 기능명(내부 `feature_name` 매핑) |
+| Test Steps | test_steps | Y | 줄바꿈으로 연결된 단계 |
+| Test Data | test_data | Y | 줄바꿈으로 연결된 테스트 데이터 |
+| Expected Result | expected_result | Y | 기대 결과 |
+
+## 6) 문서/모델/프롬프트 버전 기록 구조
+(근거: TASK 11장)
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "generation_audit",
+  "type": "object",
+  "required": [
+    "document_version",
+    "model_version",
+    "prompt_version",
+    "template_version",
+    "generated_at",
+    "requested_by",
+    "approver",
+    "source_chunks",
+    "user_edit_history"
+  ],
+  "properties": {
+    "document_version": { "type": "string", "minLength": 1 },
+    "model_version": { "type": "string", "minLength": 1 },
+    "prompt_version": { "type": "string", "minLength": 1 },
+    "template_version": { "type": "string", "minLength": 1 },
+    "generated_at": {
+      "type": "string",
+      "description": "시간 포맷(예: ISO8601)은 확인 필요"
+    },
+    "requested_by": { "type": "string", "minLength": 1 },
+    "approver": { "type": "string", "minLength": 1 },
+    "source_chunks": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "user_edit_history": {
+      "type": "array",
+      "description": "히스토리 상세 필드 구조는 확인 필요",
+      "items": { "type": "object" }
+    }
+  },
+  "additionalProperties": false
+}
+```
