@@ -134,26 +134,23 @@ curl http://127.0.0.1:8001/v1/models -H "Authorization: Bearer local"
 ### 2) FastAPI 서버 실행
 ```bash
 cd <폴더명>
-python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8010 --reload
 ```
 
 정상 확인:
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8010/health
 ```
 
 ### 3) Streamlit UI 실행
-기본 포트(8501) 또는 원하는 포트(예: 5801)로 실행 가능
+기본 포트(8510)로 실행
 ```bash
 cd <폴더명>
-streamlit run ui/admin_streamlit.py
-# 또는
-streamlit run ui/admin_streamlit.py --server.port 5801
+streamlit run ui/admin_streamlit.py --server.port 8510
 ```
 
 브라우저 접속:
-- `http://127.0.0.1:8501`
-- 또는 `http://127.0.0.1:5801`
+- `http://127.0.0.1:8510`
 
 ---
 
@@ -203,7 +200,7 @@ streamlit run ui/admin_streamlit.py --server.port 5801
 
 ### 9-1. `Connection refused`
 원인: FastAPI 또는 vLLM 서버가 꺼져 있음
-- vLLM(8001) -> FastAPI(8000) -> UI 순서로 실행하세요.
+- vLLM(8001) -> FastAPI(8010) -> UI(8510) 순서로 실행하세요.
 
 ### 9-2. `export not found` (404)
 원인: 해당 요청이 `completed`가 아님 (`review_required` 등)
@@ -223,14 +220,14 @@ streamlit run ui/admin_streamlit.py --server.port 5801
 
 ### 업로드
 ```bash
-curl -X POST "http://127.0.0.1:8000/documents/upload" \
+curl -X POST "http://127.0.0.1:8010/documents/upload" \
   -F "files=@/path/to/requirements_login_v1.xlsx" \
   -F "requested_by=qa_user"
 ```
 
 ### 생성
 ```bash
-curl -X POST "http://127.0.0.1:8000/tc/generate" \
+curl -X POST "http://127.0.0.1:8010/tc/generate" \
   -H "Content-Type: application/json" \
   -d '{
     "document_ids": ["<document_id>"],
@@ -242,10 +239,10 @@ curl -X POST "http://127.0.0.1:8000/tc/generate" \
 
 ### 조회/다운로드
 ```bash
-curl "http://127.0.0.1:8000/jobs/<request_id>"
-curl "http://127.0.0.1:8000/validation/<request_id>"
-curl "http://127.0.0.1:8000/rtm/<request_id>"
-curl -fL "http://127.0.0.1:8000/exports/<request_id>" -o tc_rtm.xlsx
+curl "http://127.0.0.1:8010/jobs/<request_id>"
+curl "http://127.0.0.1:8010/validation/<request_id>"
+curl "http://127.0.0.1:8010/rtm/<request_id>"
+curl -fL "http://127.0.0.1:8010/exports/<request_id>" -o tc_rtm.xlsx
 ```
 
 ---

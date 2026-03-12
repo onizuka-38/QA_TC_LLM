@@ -18,7 +18,7 @@ if "request_id" not in st.session_state:
 if "export_bytes" not in st.session_state:
     st.session_state.export_bytes = b""
 
-api_base_url = st.sidebar.text_input("FastAPI Base URL", value="http://127.0.0.1:8000")
+api_base_url = st.sidebar.text_input("FastAPI Base URL", value="http://127.0.0.1:8010")
 requested_by = st.sidebar.text_input("Requested By", value="qa_user")
 
 st.subheader("1) 자연어 입력 + 파일 첨부")
