@@ -1,4 +1,5 @@
 # QA_TC_LLM
+# SAMSUNG _ Kiheung
 
 ## 1. 이 프로젝트가 하는 일
 `QA_TC_LLM`은 요구사항 문서(PDF/Word/Excel)를 읽어서 테스트케이스(TC) 초안과 RTM(요구사항 추적표)을 자동으로 만들어주는 내부 QA 지원 도구입니다.
