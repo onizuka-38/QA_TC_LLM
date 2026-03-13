@@ -37,7 +37,16 @@ class TCGenerator:
         return [], True
 
     def _build_prompt(self, chunks: list[ChunkMetadata], user_prompt: str) -> str:
-        evidence = [chunk.model_dump() for chunk in chunks]
+        compact_chunks = chunks[:8]
+        evidence = [
+            {
+                "chunk_id": chunk.chunk_id,
+                "requirement_id": chunk.requirement_id,
+                "source_doc": chunk.source_doc,
+                "content": chunk.content[:260],
+            }
+            for chunk in compact_chunks
+        ]
         return (
             "Generate ONLY a valid JSON array. "
             "No prose, no markdown, no code fences. "
@@ -47,6 +56,7 @@ class TCGenerator:
             "Optional fields: labels(list[str]), notes(string). "
             "Type constraints: preconditions=list[str], test_steps=list[str], test_data=list[str]. "
             "review_status must be exactly 'draft'. "
+            "Do not return a single object when multiple requirement_ids are provided. "
             f"User prompt: {user_prompt}. "
             f"Evidence chunks: {evidence}"
         )

@@ -113,7 +113,12 @@ class WorkflowService:
             selected_set = set(requirement_ids)
             selected = [chunk for chunk in selected if chunk.requirement_id in selected_set]
             if not selected:
+                selected = [chunk for chunk in merged_chunks if chunk.requirement_id in selected_set]
+            selected = self._limit_chunks_for_prompt(selected, max_per_requirement=1, max_total=8)
+            if not selected:
                 self._mark_review_required(request_id, requested_by)
+                sqlite_store.save_tc_draft(request_id, [])
+                sqlite_store.set_review_state(request_id, is_reviewed=False, last_edited_at=None)
                 sqlite_store.save_validation(
                     ValidationRecord(
                         request_id=request_id,
@@ -135,9 +140,20 @@ class WorkflowService:
                 )
             )
 
-            cases, review_required = await self._generator.generate(selected, user_prompt=user_prompt)
+            generation_prompt = (
+                f"{user_prompt}\n"
+                f"Selected requirement_ids: {', '.join(requirement_ids)}\n"
+                "Rules: create at least 1 test case per selected requirement_id.\n"
+                "Rules: include labels across output: normal,error,exception.\n"
+            )
+            if target_case_count in {3, 4, 5}:
+                generation_prompt += f"Rules: generate total {target_case_count} test cases.\n"
+
+            cases, review_required = await self._generator.generate(selected, user_prompt=generation_prompt)
             if review_required:
                 self._mark_review_required(request_id, requested_by)
+                sqlite_store.save_tc_draft(request_id, [])
+                sqlite_store.set_review_state(request_id, is_reviewed=False, last_edited_at=None)
                 sqlite_store.save_validation(
                     ValidationRecord(
                         request_id=request_id,
@@ -149,7 +165,10 @@ class WorkflowService:
 
             validation = validate_tc_list(cases, requirement_ids=requirement_ids, target_case_count=target_case_count)
             if not validation.is_valid and validation.failure_action == "regenerate":
-                cases_retry, review_required_retry = await self._generator.generate(selected, user_prompt=user_prompt)
+                cases_retry, review_required_retry = await self._generator.generate(
+                    selected,
+                    user_prompt=generation_prompt,
+                )
                 if not review_required_retry:
                     retry_validation = validate_tc_list(
                         cases_retry,
@@ -217,22 +236,33 @@ class WorkflowService:
         if selected_requirement_ids:
             selected_set = set(selected_requirement_ids)
             selected = [chunk for chunk in selected if chunk.requirement_id in selected_set]
+        selected = self._limit_chunks_for_prompt(selected, max_per_requirement=1, max_total=6)
         source_chunk_ids = [chunk.chunk_id for chunk in selected]
         if not source_chunk_ids:
             raise ValueError("REVIEW_NEEDED: no source chunks found for chat query")
 
         evidence_summary = "\n".join([f"- {chunk.requirement_id}: {chunk.content[:120]}" for chunk in selected[:5]])
         system_prompt = (
-            "당신은 문서 기반 QA 보조 도우미다. "
-            "반드시 제공된 evidence 범위 안에서만 답변하고 추측하지 말라."
+            "너는 문서 근거 기반 QA 어시스턴트다. "
+            "항상 자연스러운 한국어로 답하고, 분석 과정이나 내부 추론은 절대 출력하지 마라."
         )
         chat_prompt = (
-            f"Selected requirement ids: {selected_requirement_ids}\n"
-            f"User question: {user_prompt}\n"
-            f"Evidence:\n{evidence_summary}\n"
-            "답변 마지막에 핵심 근거를 짧게 요약하라."
+            f"선택 requirement_id: {selected_requirement_ids}\n"
+            f"사용자 질문: {user_prompt}\n"
+            f"문서 근거:\n{evidence_summary}\n"
+            "출력 규칙:\n"
+            "1) 자연스러운 한국어 답변 1~3문장\n"
+            "2) 문서 근거 밖 추측 금지\n"
+            "3) 질문이 근거와 무관하면 '제공된 문서 근거에서 확인 필요'라고 답변\n"
+            "4) 마지막 줄은 반드시 '근거:'로 시작\n"
+            "5) Analyze, Thinking Process, Constraint 같은 분석형 문구 출력 금지"
         )
-        answer = await self._vllm_client.generate_text(system_prompt=system_prompt, user_prompt=chat_prompt, request_tag="chat")
+        raw_answer = await self._vllm_client.generate_text(
+            system_prompt=system_prompt,
+            user_prompt=chat_prompt,
+            request_tag="chat",
+        )
+        answer = self._sanitize_chat_answer(raw_answer, evidence_summary)
 
         sqlite_store.append_chat_record(
             ChatRecord(
@@ -378,6 +408,51 @@ class WorkflowService:
                 if old_payload.get(field) != value:
                     changed.add(field)
         return sorted(changed)
+
+    def _limit_chunks_for_prompt(
+        self,
+        chunks: list[ChunkMetadata],
+        max_per_requirement: int,
+        max_total: int,
+    ) -> list[ChunkMetadata]:
+        limited: list[ChunkMetadata] = []
+        per_requirement: dict[str, int] = {}
+        for chunk in chunks:
+            count = per_requirement.get(chunk.requirement_id, 0)
+            if count >= max_per_requirement:
+                continue
+            limited.append(chunk)
+            per_requirement[chunk.requirement_id] = count + 1
+            if len(limited) >= max_total:
+                break
+        return limited
+
+    def _sanitize_chat_answer(self, answer: str, evidence_summary: str) -> str:
+        cleaned = answer.replace("```", "").strip()
+        lowered = cleaned.lower()
+        thinking_markers = [
+            "thinking process",
+            "analyze the request",
+            "analysis",
+            "constraint",
+            "input question",
+            "evaluate evidence",
+            "step-by-step",
+            "chain-of-thought",
+            "role:",
+        ]
+        if any(marker in lowered for marker in thinking_markers):
+            lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+            filtered_lines = [line for line in lines if not any(marker in line.lower() for marker in thinking_markers)]
+            cleaned = "\n".join(filtered_lines).strip()
+        if "근거:" not in cleaned:
+            first_evidence = evidence_summary.splitlines()[0].strip() if evidence_summary else "-"
+            cleaned = f"{cleaned}\n근거: {first_evidence}".strip()
+        has_korean = any("\uac00" <= ch <= "\ud7a3" for ch in cleaned)
+        if not has_korean:
+            first_evidence = evidence_summary.splitlines()[0].strip() if evidence_summary else "-"
+            cleaned = f"제공된 문서 근거에서 확인 필요\n근거: {first_evidence}"
+        return cleaned
 
 
 workflow_service = WorkflowService()

@@ -19,6 +19,8 @@ async def query_chat(request: ChatQueryRequest) -> ChatQueryResponse:
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"chat backend failed: {type(exc).__name__}") from exc
     source_chunks_raw = payload.get("source_chunks", [])
     source_chunks = [str(item) for item in source_chunks_raw] if isinstance(source_chunks_raw, list) else []
     return ChatQueryResponse(

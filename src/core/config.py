@@ -8,7 +8,7 @@ class Settings(BaseModel):
     model_name: str = "Qwen3.5-27B-GPTQ-Int4"
     vllm_base_url: str = "http://127.0.0.1:8001"
     vllm_api_key: str = "local"
-    generation_timeout_sec: float = 60.0
+    generation_timeout_sec: float = 240.0
     generation_retry_count: int = 1
     max_concurrent_jobs: int = 5
 

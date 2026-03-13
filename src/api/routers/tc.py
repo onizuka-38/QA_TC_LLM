@@ -34,8 +34,6 @@ async def generate_tc(request: GenerateRequest) -> GenerateResponse:
 @router.get("/drafts/{request_id}", response_model=DraftResponse)
 async def get_tc_draft(request_id: str) -> DraftResponse:
     cases = workflow_service.get_tc_draft(request_id)
-    if not cases:
-        raise HTTPException(status_code=404, detail="draft not found")
     payload = [DraftCase(**case.model_dump(mode="json")) for case in cases]
     return DraftResponse(request_id=request_id, cases=payload)
 
