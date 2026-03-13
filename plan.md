@@ -1,7 +1,7 @@
 # plan.md
 
 ## 프로젝트 개요
-- 요구사항 문서(`pdf`, `docx`, `xlsx`) + 자연어 입력(`user_prompt`)을 받아 TC 초안 생성, RTM 생성, .xlsx 산출물 export를 지원하는 사내용 QA 문서 작성 보조 LLM 도구
+- 요구사항 문서(`pdf`, `docx`, `xlsx`)를 기반으로 requirement_id를 자동 추출/선택하고, 자연어 대화형 보조 입력(`user_prompt`)을 함께 사용해 TC 초안 생성, RTM 생성, .xlsx 산출물 export를 지원하는 사내용 QA 문서 작성 보조 LLM 도구
 
 ## 전제
 - 본 문서는 구현 전 계획 문서다.
@@ -23,7 +23,8 @@
 
 ### 목표 (MVP 핵심 범위)
 - requirement_id 기반 추적
-- 문서 + 자연어 입력 기반 생성
+- 문서 업로드 후 requirement_id 자동 추출/선택 기반 생성
+- 자연어 입력은 생성 의도 보조 역할로만 사용(근거 대체 금지)
 - JSON 구조화 출력
 - 생성 결과 검증
 - RTM 생성
@@ -33,6 +34,7 @@
 - vLLM은 추론 전용 서버로만 사용
 - request_id 기반 작업 추적
 - 리소스 정책: 40GB MIG 기준 보수적 컨텍스트 설정, 긴 컨텍스트 최적화/고동시성 최적화 제외
+- 대화형 보조(문서 요약/질의응답)와 구조화 산출물 생성(TC/RTM/export) 역할 분리
 
 ### 비목표
 - QA 최종 판단 자동화
@@ -47,6 +49,7 @@
 - 장문 컨텍스트 최적화
 - 고동시성 분산 처리
 - 2차/3차 고도화 범위 전체
+- 문서 근거 없는 자유 생성 기반 TC 산출
 
 ## 2. 변경 파일 목록
 
@@ -103,10 +106,17 @@
 - 재랭킹 모델은 MVP 범위에서 제외
 
 ### 생성 / 검증
-- `tc_generator`: 검색 결과 기반 TC JSON 생성
+- `tc_generator`: 선택된 requirement_id + source_chunks 기반 TC JSON 생성
 - `tc_validator`: 스키마/필수/품질 검증 + failure_action 기록
 - 구조화 출력 실패 시 1회 재시도 후 `review_required`
 - 검증 실패 결과는 최종 산출물에서 제외
+- 문서 근거 없는 생성 금지:
+  - 자연어 입력(`user_prompt`)은 의도/우선순위 보조용
+  - requirement_id/근거 chunk를 대체하지 않음
+- 검증 강화(신규):
+  - 선택된 각 requirement_id당 최소 1개 TC 존재
+  - 총 TC 개수 목표(3~5 요청 시) 미달 여부
+  - 정상/오류/예외 라벨 포함 여부
 
 ### RTM / Excel / 감사 로그
 - `rtm_builder`: requirement_id 기준 RTM 생성
@@ -124,6 +134,10 @@
 - 기본 구조는 FastAPI 연동 UI
 - Streamlit 단독 MVP 구조는 사용하지 않음
 - Streamlit은 내부 관리자 보조 UI로만 제한
+- UI는 2개 흐름을 하나의 인터페이스에서 제공:
+  - 채팅형 질의/설명/초안 보조
+  - 구조화된 TC 생성/검증/RTM/export
+- requirement_id 수기 입력은 기본 흐름에서 제거하고, 필요 시 관리자 보조 입력으로만 제한
 
 ## 4. 작업 상태 / 엔드포인트
 
@@ -141,11 +155,15 @@
 
 ### MVP 엔드포인트
 - `POST /documents/upload`
-- `POST /tc/generate` (`document_ids`, `requirement_ids`, `user_prompt`, `requested_by`)
+- `GET /documents/{document_id}/requirements` (추출된 requirement_id 목록 조회)
+- `POST /tc/generate` (`document_ids`, `requirement_ids(selected)`, `user_prompt`, `requested_by`)
 - `GET /jobs/{request_id}`
 - `GET /validation/{request_id}`
 - `GET /rtm/{request_id}`
 - `GET /exports/{request_id}`
+- `POST /chat/query` (검토):
+  - 입력: `document_ids`, `selected_requirement_ids`, `user_prompt`
+  - 출력: 문서 근거 기반 자연어 응답 + `source_chunks` 요약(가능 시)
 
 ## 5. 단계별 구현 전략
 1. FastAPI 골격 구축
@@ -156,13 +174,16 @@
 - 업로드 처리
 - parser_output / normalized_document 정의
 
-3. 청킹/검색 구축
+3. 청킹/검색/요구사항 목록 구축
 - requirement_id 중심 청킹
 - 하이브리드 검색 연결
+- document별 requirement_id 목록 API 제공
 
 4. 생성/검증 구축
 - FastAPI service에서 vLLM API 호출 오케스트레이션
 - JSON 구조화 실패 시 재시도/검토대기 분기
+- 선택 requirement_id 기반 생성 강제
+- 커버리지/개수/라벨 검증 규칙 추가
 
 5. RTM/Excel 출력 구축
 - RTM 컬럼 고정
@@ -175,8 +196,9 @@
 7. 요청 처리 정책 구축
 - 동시사용자 5명 기준 큐/타임아웃/상태조회 방식 반영
 
-8. UI 연동
-- UI -> FastAPI 연동 플로우 확정
+8. UI 연동(역할 분리)
+- 채팅형 질의/설명 보조 UI 연동
+- requirement selector 기반 구조화 생성 플로우 연동
 - Streamlit은 관리자 보조 기능만 허용
 
 ## 6. 테스트 전략
@@ -186,6 +208,9 @@
 - 통합 테스트
 - 동시성 점검(5명 기준)
 - 장애 테스트(vLLM 오류, JSON 파손, requirement_id 누락, export 실패)
+- requirements API 테스트(문서별 requirement_id 추출 정합)
+- chat endpoint 테스트(근거 chunk 포함 여부)
+- 생성 검증 테스트(요구사항별 최소 1개, 총 개수, 정상/오류/예외 라벨)
 
 ## 7. 리스크 / fallback
 - FastAPI 과부하
@@ -196,6 +221,8 @@
   - fallback: 매핑 표 고정 + normalize 단계 보정
 - requirement_id 추출 누락
   - fallback: 규칙 강화 + `확인 필요`
+- requirement_id 자동 추출 오탐/누락
+  - fallback: 관리자 보조 수기 입력(기본 비노출), 추출 규칙 보정
 - RTM 컬럼/연결 오류
   - fallback: 고정 최소 컬럼 강제 + 재검증
 - UI 복잡화
@@ -204,6 +231,7 @@
   - fallback: WAL + busy_timeout + 단일 writer 성향 유지
 
 ## 8. 상세 todo list
+### 8-1. 기존 MVP 완료 항목
 1. [x] FastAPI 계층 구조(router/service/schema) 문서 고정
 2. [x] 작업 상태/식별자 규칙 문서화
 3. [x] 업로드 엔드포인트 정의: `POST /documents/upload`
@@ -224,6 +252,45 @@
 18. [x] generation / validation / review / audit 기록 예시 고정
 19. [x] 동시사용자 5명 기준 요청 처리 시나리오 문서화
 20. [x] MVP 완료조건(TASK 16장) 체크리스트 업데이트
+
+### 8-2. 변경 반영 신규 todo (REQ 자동 추출/선택 + 대화형 보조)
+1. [ ] requirements API 계약 정의: `GET /documents/{document_id}/requirements`
+- 완료 확인 방법: Swagger/문서에 request/response 예시 반영
+2. [ ] requirements API 구현 (chunks/normalized 기반 requirement_id 목록 반환)
+- 완료 확인 방법: 샘플 문서 업로드 후 requirement_id 목록(`REQ-100` 등) 응답 확인
+3. [ ] requirements API 테스트 추가 (`tests/api/`)
+- 완료 확인 방법: `pytest tests/api -k requirements` 통과
+4. [ ] UI requirement selector 추가(멀티셀렉트/체크박스)
+- 완료 확인 방법: 업로드 후 자동 목록이 UI에서 선택 가능
+5. [ ] requirement_id 수기 입력 기본 흐름 제거(관리자 보조 입력으로 격하)
+- 완료 확인 방법: 기본 화면에서 자유 텍스트 입력 없이 선택만으로 generate 가능
+6. [ ] `/tc/generate` 입력 계약을 선택 requirement_id 중심으로 문서화 갱신
+- 완료 확인 방법: plan/schema/API 문서에서 수기 입력 비기본 정책 확인
+7. [ ] 문서 기반 생성 강제 규칙 추가(선택 requirement_id + source_chunks만 사용)
+- 완료 확인 방법: 생성 로그에 선택 requirement_id/source_chunks가 누락 없이 기록
+8. [ ] 채팅 API 계약 정의: `POST /chat/query`
+- 완료 확인 방법: request/response schema(근거 `source_chunks` 포함) 문서화
+9. [ ] 채팅 API 구현(문서/선택 requirement_id 문맥 기반)
+- 완료 확인 방법: 채팅 응답에 근거 chunk 요약 또는 source_chunks 포함
+10. [ ] 채팅 API 테스트 추가 (`tests/api/`, `tests/services/`)
+- 완료 확인 방법: 근거 없는 자유 응답 차단 케이스 포함 테스트 통과
+11. [ ] coverage 검증 규칙 추가: 선택 requirement_id당 최소 1개 TC
+- 완료 확인 방법: 선택 ID 대비 TC 매핑 누락 시 `review_required` 또는 재생성 분기 확인
+12. [ ] 생성 개수 검증 규칙 추가: 3~5개 요청 시 미달 여부 검증
+- 완료 확인 방법: 미달 입력 케이스에서 failure_action 기록 확인
+13. [ ] 정상/오류/예외 라벨 검증 규칙 추가
+- 완료 확인 방법: 라벨 누락 시 validation check 실패 확인
+14. [ ] 재생성/`review_required` 분기 규칙 명시 및 구현 연동
+- 완료 확인 방법: 검증 미달 시 1회 재생성 후 실패하면 `review_required` 확인
+15. [ ] RTM/export 연동 점검(신규 검증 규칙 반영 후 completed 경로 유지)
+- 완료 확인 방법: `completed` 요청에서 RTM rows non-empty + export `.xlsx` 200 확인
+16. [ ] 통합 테스트 추가: upload -> requirements -> select -> generate -> validation -> rtm -> export
+- 완료 확인 방법: `tests/integration` 시나리오 통과
+
+## 8-3. 123e.md 정합성 메모
+- 본 변경은 “QA는 판단, AI는 문서 보조” 원칙을 유지한다.
+- 목표는 백지 작성 제거, requirement_id 기반 추적성 강화, 누락 감소다.
+- 대화형 기능은 보조 역할이며, 구조화 산출물(TC/RTM/export)은 문서 근거 기반으로만 생성한다.
 
 ## 9. 기록 예시
 - generation record

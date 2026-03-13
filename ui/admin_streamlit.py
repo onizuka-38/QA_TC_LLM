@@ -114,7 +114,7 @@ with rtm_col:
             st.json(data)
             rows = data.get("rows", [])
             if rows:
-                st.dataframe(rows, use_container_width=True)
+                st.dataframe(rows, width="stretch")
         else:
             st.code(resp.text)
 
@@ -153,7 +153,7 @@ if st.session_state.export_bytes:
             for row in rows_tc[1:11]:
                 preview_tc.append({headers[i]: row[i] for i in range(len(headers))})
             st.markdown("**TC 미리보기**")
-            st.dataframe(preview_tc, use_container_width=True)
+            st.dataframe(preview_tc, width="stretch")
 
     if "RTM" in wb.sheetnames:
         ws_rtm = wb["RTM"]
@@ -164,4 +164,4 @@ if st.session_state.export_bytes:
             for row in rows_rtm[1:11]:
                 preview_rtm.append({headers[i]: row[i] for i in range(len(headers))})
             st.markdown("**RTM 미리보기**")
-            st.dataframe(preview_rtm, use_container_width=True)
+            st.dataframe(preview_rtm, width="stretch")
