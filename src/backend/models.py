@@ -60,6 +60,12 @@ class ChunkMetadata(BaseModel):
     content: str
 
 
+class RequirementOption(BaseModel):
+    requirement_id: str
+    source_chunks: list[str]
+    source_doc: str
+
+
 class TestCase(BaseModel):
     tc_id: str
     requirement_id: str
@@ -70,6 +76,8 @@ class TestCase(BaseModel):
     expected_result: str
     test_type: str
     priority: str
+    labels: list[str] = Field(default_factory=list)
+    notes: str | None = None
     source_chunks: list[str]
     review_status: ReviewStatus
 
@@ -77,6 +85,7 @@ class TestCase(BaseModel):
 class ValidationCheck(BaseModel):
     rule: str
     passed: bool
+    message: str | None = None
 
 
 class ValidationResult(BaseModel):
@@ -115,7 +124,26 @@ class GenerationRecord(BaseModel):
     model_version: str
     prompt_version: str
     generated_at: datetime
+    selected_requirement_ids: list[str] = Field(default_factory=list)
+    target_case_count: int | None = None
     source_chunks: list[str]
+
+
+class ChatRecord(BaseModel):
+    request_id: str
+    document_ids: list[str]
+    selected_requirement_ids: list[str]
+    question: str
+    answer: str
+    source_chunks: list[str]
+    created_at: datetime
+
+
+class EditHistoryRecord(BaseModel):
+    request_id: str
+    edited_by: str
+    edited_at: datetime
+    changed_fields: list[str]
 
 
 class ValidationRecord(BaseModel):

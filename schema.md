@@ -343,3 +343,8 @@
 원칙:
 - chat 응답도 문서 근거 기반으로만 생성한다.
 - chat은 보조 기능이며 TC 구조화 생성의 requirement_id/근거 chunk 규칙을 대체하지 않는다.
+
+## 11) REVIEW_NEEDED / TODO (구현-스키마 정합성 메모)
+- `chat/query`에서 `source_chunks`를 찾지 못하면 409(`REVIEW_NEEDED`)를 반환한다.
+- edit/review 이력은 `edited_at`, `edited_by`, `changed_fields`를 저장하도록 구현되었으며,
+  상세 이력 조회 API 스키마는 `확인 필요`로 남긴다.

@@ -9,3 +9,14 @@ class UploadedDocument(BaseModel):
 
 class UploadResponse(BaseModel):
     documents: list[UploadedDocument]
+
+
+class RequirementItem(BaseModel):
+    requirement_id: str
+    source_chunks: list[str]
+    source_doc: str
+
+
+class DocumentRequirementsResponse(BaseModel):
+    document_id: str
+    requirements: list[RequirementItem]

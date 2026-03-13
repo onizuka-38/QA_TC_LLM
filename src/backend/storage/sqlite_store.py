@@ -7,11 +7,14 @@ from pathlib import Path
 
 from src.backend.models import (
     AuditRecord,
+    ChatRecord,
     ChunkMetadata,
+    EditHistoryRecord,
     GenerationRecord,
     JobRecord,
     RTMRow,
     ReviewHistoryRecord,
+    TestCase,
     ValidationRecord,
 )
 from src.core.config import settings
@@ -100,6 +103,35 @@ class SQLiteStore:
             """,
             """
             CREATE TABLE IF NOT EXISTS review_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS tc_drafts (
+                request_id TEXT NOT NULL,
+                row_index INTEGER NOT NULL,
+                payload_json TEXT NOT NULL,
+                PRIMARY KEY (request_id, row_index)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS review_states (
+                request_id TEXT PRIMARY KEY,
+                is_reviewed INTEGER NOT NULL,
+                last_edited_at TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS chat_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                payload_json TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS edit_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 request_id TEXT NOT NULL,
                 payload_json TEXT NOT NULL
@@ -220,6 +252,85 @@ class SQLiteStore:
         )
         self._conn.commit()
 
+    def get_generation_record(self, request_id: str) -> GenerationRecord | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM generation_records WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return GenerationRecord.model_validate(json.loads(row["payload_json"]))
+
+    def save_tc_draft(self, request_id: str, cases: list[TestCase]) -> None:
+        self._conn.execute("DELETE FROM tc_drafts WHERE request_id = ?", (request_id,))
+        for index, case in enumerate(cases):
+            self._conn.execute(
+                "INSERT INTO tc_drafts(request_id, row_index, payload_json) VALUES (?, ?, ?)",
+                (request_id, index, json.dumps(case.model_dump(mode="json"), ensure_ascii=False)),
+            )
+        self._conn.commit()
+
+    def get_tc_draft(self, request_id: str) -> list[TestCase]:
+        rows = self._conn.execute(
+            "SELECT payload_json FROM tc_drafts WHERE request_id = ? ORDER BY row_index",
+            (request_id,),
+        ).fetchall()
+        return [TestCase.model_validate(json.loads(row["payload_json"])) for row in rows]
+
+    def set_review_state(self, request_id: str, is_reviewed: bool, last_edited_at: str | None) -> None:
+        self._conn.execute(
+            """
+            INSERT OR REPLACE INTO review_states(request_id, is_reviewed, last_edited_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (request_id, 1 if is_reviewed else 0, last_edited_at, datetime.utcnow().isoformat()),
+        )
+        self._conn.commit()
+
+    def get_review_state(self, request_id: str) -> dict[str, object] | None:
+        row = self._conn.execute(
+            "SELECT is_reviewed, last_edited_at, updated_at FROM review_states WHERE request_id = ?",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "is_reviewed": bool(row["is_reviewed"]),
+            "last_edited_at": str(row["last_edited_at"]) if row["last_edited_at"] is not None else None,
+            "updated_at": str(row["updated_at"]),
+        }
+
+    def append_chat_record(self, payload: ChatRecord) -> None:
+        self._conn.execute(
+            "INSERT INTO chat_records(payload_json) VALUES (?)",
+            (json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),),
+        )
+        self._conn.commit()
+
+    def get_latest_chat_record(self) -> ChatRecord | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM chat_records ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        return ChatRecord.model_validate(json.loads(row["payload_json"]))
+
+    def append_edit_history(self, payload: EditHistoryRecord) -> None:
+        self._conn.execute(
+            "INSERT INTO edit_history(request_id, payload_json) VALUES (?, ?)",
+            (payload.request_id, json.dumps(payload.model_dump(mode="json"), ensure_ascii=False)),
+        )
+        self._conn.commit()
+
+    def get_latest_edit_history(self, request_id: str) -> EditHistoryRecord | None:
+        row = self._conn.execute(
+            "SELECT payload_json FROM edit_history WHERE request_id = ? ORDER BY id DESC LIMIT 1",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return EditHistoryRecord.model_validate(json.loads(row["payload_json"]))
+
     def append_review_history(self, payload: ReviewHistoryRecord) -> None:
         self._conn.execute(
             "INSERT INTO review_history(request_id, payload_json) VALUES (?, ?)",
@@ -239,6 +350,10 @@ class SQLiteStore:
             "audits",
             "generation_records",
             "review_history",
+            "tc_drafts",
+            "review_states",
+            "chat_records",
+            "edit_history",
         ]:
             self._conn.execute(f"DELETE FROM {table}")
         self._conn.commit()

@@ -11,7 +11,7 @@ async def get_validation(request_id: str) -> ValidationResponse:
     payload = workflow_service.get_validation(request_id)
     if payload is None:
         raise HTTPException(status_code=404, detail="validation not found")
-    checks = [ValidationCheck(rule=check.rule, passed=check.passed) for check in payload.result.checks]
+    checks = [ValidationCheck(rule=check.rule, passed=check.passed, message=check.message) for check in payload.result.checks]
     return ValidationResponse(
         request_id=request_id,
         is_valid=payload.result.is_valid,

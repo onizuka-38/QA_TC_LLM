@@ -44,6 +44,7 @@ class TCGenerator:
             "Each item must include fields: "
             "tc_id, requirement_id, feature_name, preconditions, test_steps, "
             "test_data, expected_result, test_type, priority, source_chunks, review_status. "
+            "Optional fields: labels(list[str]), notes(string). "
             "Type constraints: preconditions=list[str], test_steps=list[str], test_data=list[str]. "
             "review_status must be exactly 'draft'. "
             f"User prompt: {user_prompt}. "
@@ -100,5 +101,9 @@ class TCGenerator:
         review_status = normalized.get("review_status")
         if isinstance(review_status, str) and review_status.lower() == "pending":
             normalized["review_status"] = "draft"
+
+        labels = normalized.get("labels")
+        if isinstance(labels, str):
+            normalized["labels"] = [labels]
 
         return normalized

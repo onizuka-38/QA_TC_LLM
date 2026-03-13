@@ -13,20 +13,25 @@ st.title("QA/TC Automation - MVP UI")
 
 if "document_ids" not in st.session_state:
     st.session_state.document_ids = []
+if "requirements" not in st.session_state:
+    st.session_state.requirements = []
+if "selected_requirement_ids" not in st.session_state:
+    st.session_state.selected_requirement_ids = []
 if "request_id" not in st.session_state:
     st.session_state.request_id = ""
 if "export_bytes" not in st.session_state:
     st.session_state.export_bytes = b""
+if "chat_log" not in st.session_state:
+    st.session_state.chat_log = []
+if "draft_cases" not in st.session_state:
+    st.session_state.draft_cases = []
+if "review_completed" not in st.session_state:
+    st.session_state.review_completed = False
 
 api_base_url = st.sidebar.text_input("FastAPI Base URL", value="http://127.0.0.1:8010")
 requested_by = st.sidebar.text_input("Requested By", value="qa_user")
 
-st.subheader("1) 자연어 입력 + 파일 첨부")
-user_prompt = st.text_area(
-    "자연어 입력 (user_prompt)",
-    value="REQ-100 로그인 요구사항 테스트케이스를 우선 생성해줘.",
-    height=120,
-)
+st.subheader("1) 문서 업로드")
 uploaded_files = st.file_uploader(
     "문서 첨부 (pdf/docx/xlsx)",
     type=["pdf", "docx", "xlsx"],
@@ -45,6 +50,7 @@ if st.button("업로드", type="primary"):
             payload = resp.json()
             docs = payload.get("documents", [])
             st.session_state.document_ids = [doc["document_id"] for doc in docs]
+            st.session_state.review_completed = False
             st.success("업로드 성공")
             st.json(payload)
         else:
@@ -53,19 +59,65 @@ if st.button("업로드", type="primary"):
 
 st.write("현재 document_ids:", st.session_state.document_ids)
 
-st.subheader("2) 생성 요청")
-col1, col2 = st.columns([3, 1])
-with col1:
-    requirement_ids_text = st.text_input("Requirement IDs (쉼표 구분)", value="REQ-100")
-with col2:
-    run_generate = st.button("생성")
+if st.button("requirement 자동 추출 조회"):
+    all_requirements: list[dict[str, Any]] = []
+    with httpx.Client(timeout=60.0) as client:
+        for document_id in st.session_state.document_ids:
+            resp = client.get(f"{api_base_url}/documents/{document_id}/requirements")
+            if resp.status_code == 200:
+                all_requirements.extend(resp.json().get("requirements", []))
+    by_id: dict[str, dict[str, Any]] = {}
+    for item in all_requirements:
+        rid = str(item.get("requirement_id", ""))
+        if rid and rid not in by_id:
+            by_id[rid] = item
+    st.session_state.requirements = list(by_id.values())
 
-if run_generate:
-    requirement_ids = [rid.strip() for rid in requirement_ids_text.split(",") if rid.strip()]
+options = [item["requirement_id"] for item in st.session_state.requirements]
+st.session_state.selected_requirement_ids = st.multiselect(
+    "Requirement 선택",
+    options=options,
+    default=st.session_state.selected_requirement_ids,
+)
+
+st.subheader("2) 챗봇형 문서 QA (문서 근거 기반)")
+chat_prompt = st.text_area("질문 입력", value="REQ-100 기준 빠진 예외 케이스가 뭐야?", height=100)
+if st.button("chat/query"):
     payload = {
         "document_ids": st.session_state.document_ids,
-        "requirement_ids": requirement_ids,
+        "selected_requirement_ids": st.session_state.selected_requirement_ids,
+        "user_prompt": chat_prompt,
+        "requested_by": requested_by,
+    }
+    with httpx.Client(timeout=120.0) as client:
+        resp = client.post(f"{api_base_url}/chat/query", json=payload)
+    if resp.status_code == 200:
+        data = resp.json()
+        st.session_state.chat_log.append(data)
+        st.json(data)
+    else:
+        st.error(f"chat 실패: {resp.status_code}")
+        st.code(resp.text)
+
+if st.session_state.chat_log:
+    st.markdown("**Chat 기록**")
+    for idx, row in enumerate(st.session_state.chat_log[-5:], 1):
+        st.write(f"{idx}. {row.get('answer', '')}")
+        st.caption(f"source_chunks: {row.get('source_chunks', [])}")
+
+st.subheader("3) 구조화 QA/TC 생성")
+user_prompt = st.text_area(
+    "생성 보조 입력(user_prompt)",
+    value="선택된 requirement_id 각각에 대해 정상/오류/예외 관점으로 3~5개 TC를 제안해줘.",
+    height=90,
+)
+target_case_count = st.selectbox("목표 TC 개수", options=[3, 4, 5], index=0)
+if st.button("generate"):
+    payload = {
+        "document_ids": st.session_state.document_ids,
+        "requirement_ids": st.session_state.selected_requirement_ids,
         "user_prompt": user_prompt,
+        "target_case_count": target_case_count,
         "requested_by": requested_by,
     }
     with httpx.Client(timeout=120.0) as client:
@@ -73,6 +125,7 @@ if run_generate:
     if resp.status_code == 200:
         result = resp.json()
         st.session_state.request_id = result.get("request_id", "")
+        st.session_state.review_completed = False
         st.success("생성 요청 완료")
         st.json(result)
     else:
@@ -81,52 +134,62 @@ if run_generate:
 
 request_id = st.text_input("request_id", value=st.session_state.request_id)
 
-st.subheader("3) 진행 상태 / 검증 / RTM")
-status_col, validation_col, rtm_col = st.columns(3)
-
-with status_col:
+col_status, col_validation, col_rtm = st.columns(3)
+with col_status:
     if st.button("jobs 조회"):
         with httpx.Client(timeout=60.0) as client:
             resp = client.get(f"{api_base_url}/jobs/{request_id}")
         st.write("HTTP", resp.status_code)
-        if resp.status_code == 200:
-            st.json(resp.json())
-        else:
-            st.code(resp.text)
-
-with validation_col:
+        st.code(resp.text)
+with col_validation:
     if st.button("validation 조회"):
         with httpx.Client(timeout=60.0) as client:
             resp = client.get(f"{api_base_url}/validation/{request_id}")
         st.write("HTTP", resp.status_code)
-        if resp.status_code == 200:
-            st.json(resp.json())
-        else:
-            st.code(resp.text)
-
-with rtm_col:
+        st.code(resp.text)
+with col_rtm:
     if st.button("rtm 조회"):
         with httpx.Client(timeout=60.0) as client:
             resp = client.get(f"{api_base_url}/rtm/{request_id}")
         st.write("HTTP", resp.status_code)
-        if resp.status_code == 200:
-            data = resp.json()
-            st.json(data)
-            rows = data.get("rows", [])
-            if rows:
-                st.dataframe(rows, width="stretch")
-        else:
-            st.code(resp.text)
+        st.code(resp.text)
 
-st.subheader("4) Export 다운로드 + TC/RTM 미리보기")
-if st.button("export 조회"):
+st.subheader("4) Draft 편집")
+if st.button("draft 조회"):
+    with httpx.Client(timeout=60.0) as client:
+        resp = client.get(f"{api_base_url}/tc/drafts/{request_id}")
+    if resp.status_code == 200:
+        st.session_state.draft_cases = resp.json().get("cases", [])
+    else:
+        st.error(f"draft 조회 실패: {resp.status_code}")
+        st.code(resp.text)
+
+if st.session_state.draft_cases:
+    edited = st.data_editor(st.session_state.draft_cases, width="stretch")
+    if st.button("draft 저장"):
+        payload = {"cases": edited, "requested_by": requested_by}
+        with httpx.Client(timeout=120.0) as client:
+            resp = client.put(f"{api_base_url}/tc/drafts/{request_id}", json=payload)
+        st.write("HTTP", resp.status_code)
+        st.code(resp.text)
+        if resp.status_code == 200:
+            st.session_state.draft_cases = resp.json().get("cases", [])
+            st.success("draft 저장 완료")
+
+if st.button("검토 완료(확정)"):
+    with httpx.Client(timeout=120.0) as client:
+        resp = client.post(f"{api_base_url}/tc/review/{request_id}/complete", json={"requested_by": requested_by})
+    st.write("HTTP", resp.status_code)
+    st.code(resp.text)
+    st.session_state.review_completed = resp.status_code == 200
+
+st.subheader("5) Export 다운로드 + TC/RTM 미리보기")
+if st.button("export 조회", disabled=not st.session_state.review_completed):
     with httpx.Client(timeout=120.0) as client:
         resp = client.get(f"{api_base_url}/exports/{request_id}")
-
     st.write("HTTP", resp.status_code)
     content_type = resp.headers.get("content-type", "")
     st.write("Content-Type", content_type)
-
     if resp.status_code == 200 and "spreadsheetml.sheet" in content_type:
         st.session_state.export_bytes = resp.content
         st.success("xlsx export 수신 성공")
@@ -143,7 +206,6 @@ if st.session_state.export_bytes:
     )
 
     wb = load_workbook(BytesIO(st.session_state.export_bytes), data_only=True)
-
     if "TC" in wb.sheetnames:
         ws_tc = wb["TC"]
         rows_tc = list(ws_tc.iter_rows(values_only=True))

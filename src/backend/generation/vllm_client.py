@@ -10,6 +10,18 @@ from src.core.config import settings
 
 
 class VLLMClient:
+    async def generate_text(self, system_prompt: str, user_prompt: str, request_tag: str = "") -> str:
+        payload = {
+            "model": settings.model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0,
+            "max_tokens": 800,
+        }
+        return await self._request_chat(payload=payload, request_tag=request_tag)
+
     async def generate_json(self, prompt: str, request_tag: str = "") -> str:
         payload = {
             "model": settings.model_name,
@@ -27,6 +39,9 @@ class VLLMClient:
             "max_tokens": 800,
             "response_format": {"type": "json_object"},
         }
+        return await self._request_chat(payload=payload, request_tag=request_tag)
+
+    async def _request_chat(self, payload: dict[str, object], request_tag: str) -> str:
         headers = {"Authorization": f"Bearer {settings.vllm_api_key}"}
         debug_path = Path("data") / "vllm_debug.jsonl"
         debug_path.parent.mkdir(parents=True, exist_ok=True)

@@ -10,15 +10,16 @@
 ---
 
 ## 2. 누가 어떻게 쓰는가 (비개발 사용자 기준)
-사용자는 웹 UI(Streamlit)에서 아래만 하면 됩니다.
-1. 자연어로 요청 입력 (예: "REQ-100 로그인 테스트케이스를 생성해줘")
-2. 요구사항 문서 파일 첨부
-3. 업로드/생성 버튼 클릭
-4. 진행 상태 확인
-5. 결과(TC/RTM) 미리보기
-6. `.xlsx` 파일 다운로드
+사용자는 웹 UI에서 아래 흐름으로 사용합니다.
+1. 문서 업로드
+2. requirement 자동 추출 목록 확인
+3. 채팅형 질의(문서 근거 기반) 또는 requirement 선택 후 생성
+4. 생성된 draft 편집/검토
+5. 검토 완료 후 RTM/export
 
-UI는 최소 검증용으로 만들어져 있으며, 복잡한 운영 화면은 포함하지 않습니다.
+중요:
+- `ui/admin_streamlit.py`는 **관리자 보조 UI**입니다.
+- 운영용 메인 UI를 대체하는 최종 화면이 아니라, API/흐름 검증을 위한 보조 화면입니다.
 
 ---
 
@@ -156,34 +157,42 @@ streamlit run ui/admin_streamlit.py --server.port 8510
 
 ## 7. 화면 사용법 (비개발 사용자용)
 
-### Step 1. 자연어 입력
-- "무엇을 만들고 싶은지"를 자연어로 입력합니다.
-- 예: `REQ-100 로그인 요구사항 테스트케이스를 우선 생성해줘.`
-
-### Step 2. 파일 첨부
+### Step 1. 파일 첨부
 - PDF/Word/Excel 문서를 첨부합니다.
 - 여러 파일 첨부 가능
 
-### Step 3. 업로드
+### Step 2. 업로드
 - `업로드` 버튼 클릭
 - 성공 시 `document_id`가 생성됩니다.
 
-### Step 4. 생성
-- `Requirement IDs` 입력 (쉼표 구분)
-- `생성` 클릭
-- `request_id`가 발급됩니다.
+### Step 3. requirement 자동 추출 및 선택
+- `requirement 자동 추출 조회` 클릭
+- 추출된 requirement 목록에서 멀티셀렉트로 선택
+- 기본 흐름에서 requirement 수기 입력은 사용하지 않습니다.
 
-### Step 5. 상태 확인
+### Step 4-A. 채팅형 질의(선택)
+- 채팅 질문 입력 후 `chat/query`
+- 답변은 문서 근거(`source_chunks`)가 있는 경우에만 반환됩니다.
+
+### Step 4-B. 구조화 생성
+- `user_prompt`는 생성 의도 보조용으로 입력
+- `generate` 클릭 후 `request_id` 발급
+
+### Step 5. 상태/검증 확인
 - `jobs 조회`: 현재 상태 확인
   - `queued`, `processing`, `completed`, `review_required`, `failed`
-
-### Step 6. 결과 확인
 - `validation 조회`: 검증 결과 확인
-- `rtm 조회`: RTM 행 확인
 
-### Step 7. 다운로드
-- `export 조회` 클릭
+### Step 6. Draft 편집/검토 완료
+- `draft 조회` -> 편집 -> `draft 저장`
+- `검토 완료(확정)` 실행
+
+### Step 7. RTM/export
+- 검토 완료 + validation 통과 후에만 `rtm 조회`/`export 조회`가 유효
 - 성공 시 `tc_rtm.xlsx 다운로드` 버튼 활성화
+
+### 실제 사용자 흐름(요약)
+`upload -> requirements -> chat(optional) -> select -> generate -> review/edit -> validate -> export`
 
 ---
 
@@ -203,7 +212,10 @@ streamlit run ui/admin_streamlit.py --server.port 8510
 - vLLM(8001) -> FastAPI(8010) -> UI(8510) 순서로 실행하세요.
 
 ### 9-2. `export not found` (404)
-원인: 해당 요청이 `completed`가 아님 (`review_required` 등)
+원인: 아래 조건 미충족
+- review 완료 전
+- validation 실패
+- 또는 `review_required`
 - 먼저 `jobs` 상태를 확인하세요.
 
 ### 9-3. 생성이 느리거나 timeout 발생
@@ -235,6 +247,34 @@ curl -X POST "http://127.0.0.1:8010/tc/generate" \
     "user_prompt": "REQ-100 테스트케이스를 생성해줘",
     "requested_by": "qa_user"
   }'
+```
+
+### requirement 목록 조회
+```bash
+curl "http://127.0.0.1:8010/documents/<document_id>/requirements"
+```
+
+### chat 질의(문서 근거 기반)
+```bash
+curl -X POST "http://127.0.0.1:8010/chat/query" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document_ids": ["<document_id>"],
+    "selected_requirement_ids": ["REQ-100"],
+    "user_prompt": "REQ-100에서 빠진 예외를 설명해줘",
+    "requested_by": "qa_user"
+  }'
+```
+
+### draft 편집/검토 완료
+```bash
+curl "http://127.0.0.1:8010/tc/drafts/<request_id>"
+curl -X PUT "http://127.0.0.1:8010/tc/drafts/<request_id>" \
+  -H "Content-Type: application/json" \
+  -d '{"cases":[...],"requested_by":"qa_user"}'
+curl -X POST "http://127.0.0.1:8010/tc/review/<request_id>/complete" \
+  -H "Content-Type: application/json" \
+  -d '{"requested_by":"qa_user"}'
 ```
 
 ### 조회/다운로드

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class ValidationCheck(BaseModel):
     rule: str
     passed: bool
+    message: str | None = None
 
 
 class ValidationResponse(BaseModel):

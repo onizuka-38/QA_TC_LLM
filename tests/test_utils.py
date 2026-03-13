@@ -28,6 +28,7 @@ class StubGeneratorSuccess:
                 expected_result="login success",
                 test_type="normal",
                 priority="high",
+                labels=["normal", "error", "exception"],
                 source_chunks=[chunks[0].chunk_id] if chunks else ["chunk-none"],
                 review_status=ReviewStatus.draft,
             )
@@ -38,6 +39,11 @@ class StubGeneratorSuccess:
 class StubGeneratorReviewRequired:
     async def generate(self, chunks, user_prompt: str = ""):
         return [], True
+
+
+class StubChatClient:
+    async def generate_text(self, system_prompt: str, user_prompt: str, request_tag: str = "") -> str:
+        return "문서 근거 기반 답변입니다."
 
 
 def reset_state() -> None:
