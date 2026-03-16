@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -227,42 +228,47 @@ class WorkflowService:
         user_prompt: str,
         requested_by: str,
     ) -> dict[str, object]:
-        merged_chunks = self._merge_chunks(document_ids)
-        selected = retrieve_chunks(
-            merged_chunks,
-            requirement_ids=selected_requirement_ids if selected_requirement_ids else None,
-            vector_store=chroma_store,
+        merged_chunks = self._merge_chunks(document_ids) if document_ids else []
+        retrieved = (
+            retrieve_chunks(
+                merged_chunks,
+                requirement_ids=selected_requirement_ids if selected_requirement_ids else None,
+                user_query=user_prompt,
+                vector_store=chroma_store,
+            )
+            if merged_chunks
+            else []
         )
         if selected_requirement_ids:
             selected_set = set(selected_requirement_ids)
-            selected = [chunk for chunk in selected if chunk.requirement_id in selected_set]
-        selected = self._limit_chunks_for_prompt(selected, max_per_requirement=1, max_total=6)
+            retrieved = [chunk for chunk in retrieved if chunk.requirement_id in selected_set]
+        selected = self._limit_chunks_for_prompt(retrieved, max_per_requirement=1, max_total=6)
         source_chunk_ids = [chunk.chunk_id for chunk in selected]
-        if not source_chunk_ids:
-            raise ValueError("REVIEW_NEEDED: no source chunks found for chat query")
+        evidence_summary = (
+            "\n".join([f"- {chunk.requirement_id}: {chunk.content[:180]}" for chunk in selected[:5]])
+            if selected
+            else "-"
+        )
 
-        evidence_summary = "\n".join([f"- {chunk.requirement_id}: {chunk.content[:120]}" for chunk in selected[:5]])
         system_prompt = (
-            "너는 문서 근거 기반 QA 어시스턴트다. "
-            "항상 자연스러운 한국어로 답하고, 분석 과정이나 내부 추론은 절대 출력하지 마라."
+            "당신은 한국어 챗봇이다. 사용자의 질문에 자연스럽고 간결하게 답하라. "
+            "내부 분석 과정, 지시문 복창, 프롬프트 내용을 그대로 반복하지 마라."
         )
-        chat_prompt = (
-            f"선택 requirement_id: {selected_requirement_ids}\n"
-            f"사용자 질문: {user_prompt}\n"
-            f"문서 근거:\n{evidence_summary}\n"
-            "출력 규칙:\n"
-            "1) 자연스러운 한국어 답변 1~3문장\n"
-            "2) 문서 근거 밖 추측 금지\n"
-            "3) 질문이 근거와 무관하면 '제공된 문서 근거에서 확인 필요'라고 답변\n"
-            "4) 마지막 줄은 반드시 '근거:'로 시작\n"
-            "5) Analyze, Thinking Process, Constraint 같은 분석형 문구 출력 금지"
-        )
+        if selected:
+            chat_prompt = (
+                f"질문: {user_prompt}\n"
+                f"참고 문서 근거:\n{evidence_summary}\n"
+                "요청: 답변만 한국어로 작성해라."
+            )
+        else:
+            chat_prompt = f"질문: {user_prompt}\n요청: 답변만 한국어로 작성해라."
+
         raw_answer = await self._vllm_client.generate_text(
             system_prompt=system_prompt,
             user_prompt=chat_prompt,
             request_tag="chat",
         )
-        answer = self._sanitize_chat_answer(raw_answer, evidence_summary)
+        answer = self._sanitize_chat_answer(raw_answer)
 
         sqlite_store.append_chat_record(
             ChatRecord(
@@ -303,7 +309,15 @@ class WorkflowService:
         validation = sqlite_store.get_validation(request_id)
         if validation is None or not validation.result.is_valid:
             return []
-        return sqlite_store.get_rtm_rows(request_id)
+        rows = sqlite_store.get_rtm_rows(request_id)
+        if rows:
+            return rows
+        draft_cases = sqlite_store.get_tc_draft(request_id)
+        if not draft_cases:
+            return []
+        rebuilt_rows = build_rtm_rows(draft_cases)
+        sqlite_store.save_rtm_rows(request_id, rebuilt_rows)
+        return rebuilt_rows
 
     def get_tc_draft(self, request_id: str) -> list[TestCase]:
         return sqlite_store.get_tc_draft(request_id)
@@ -388,9 +402,25 @@ class WorkflowService:
         if validation is None or not validation.result.is_valid:
             return None
         metadata = sqlite_store.get_export_metadata(request_id)
-        if metadata is None:
+        if metadata is not None:
+            return file_store.load_bytes(str(metadata["file_path"]))
+
+        draft_cases = sqlite_store.get_tc_draft(request_id)
+        if not draft_cases:
             return None
-        return file_store.load_bytes(str(metadata["file_path"]))
+        rtm_rows = sqlite_store.get_rtm_rows(request_id)
+        if not rtm_rows:
+            rtm_rows = build_rtm_rows(draft_cases)
+            sqlite_store.save_rtm_rows(request_id, rtm_rows)
+        export_bytes = build_excel_xlsx(draft_cases, rtm_rows)
+        export_path = file_store.save_export_xlsx(request_id=request_id, content=export_bytes)
+        sqlite_store.save_export_metadata(
+            request_id=request_id,
+            file_path=export_path,
+            file_format="xlsx",
+            size_bytes=len(export_bytes),
+        )
+        return export_bytes
 
     def _merge_chunks(self, document_ids: list[str]) -> list[ChunkMetadata]:
         merged_chunks: list[ChunkMetadata] = []
@@ -427,32 +457,53 @@ class WorkflowService:
                 break
         return limited
 
-    def _sanitize_chat_answer(self, answer: str, evidence_summary: str) -> str:
+    def _sanitize_chat_answer(self, answer: str) -> str:
         cleaned = answer.replace("```", "").strip()
-        lowered = cleaned.lower()
-        thinking_markers = [
-            "thinking process",
-            "analyze the request",
-            "analysis",
-            "constraint",
-            "input question",
-            "evaluate evidence",
-            "step-by-step",
-            "chain-of-thought",
+        cleaned = cleaned.replace(" * ", "\n")
+        draft_match = re.search(r"(?is)draft answer:\s*(.+)", cleaned)
+        if draft_match is not None:
+            cleaned = draft_match.group(1).strip()
+        lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+        blocked_prefixes = (
+            "task:",
+            "input:",
+            "user question:",
+            "reference documents:",
+            "observation:",
+            "analyze the request:",
+            "determine the response:",
+            "language:",
+            "source_chunks:",
             "role:",
+        )
+        blocked_contains = (
+            "thinking process",
+            "chain-of-thought",
+            "step-by-step",
+            "i should",
+            "constraint",
+        )
+        filtered = [
+            line
+            for line in lines
+            if not line.lower().startswith(blocked_prefixes)
+            and not any(token in line.lower() for token in blocked_contains)
         ]
-        if any(marker in lowered for marker in thinking_markers):
-            lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
-            filtered_lines = [line for line in lines if not any(marker in line.lower() for marker in thinking_markers)]
-            cleaned = "\n".join(filtered_lines).strip()
-        if "근거:" not in cleaned:
-            first_evidence = evidence_summary.splitlines()[0].strip() if evidence_summary else "-"
-            cleaned = f"{cleaned}\n근거: {first_evidence}".strip()
-        has_korean = any("\uac00" <= ch <= "\ud7a3" for ch in cleaned)
-        if not has_korean:
-            first_evidence = evidence_summary.splitlines()[0].strip() if evidence_summary else "-"
-            cleaned = f"제공된 문서 근거에서 확인 필요\n근거: {first_evidence}"
-        return cleaned
+        filtered = [line for line in filtered if line not in {"*", "**", "***"}]
+        filtered = [line for line in filtered if not re.fullmatch(r"[\d\.\-\*\s]+", line)]
+        collapsed = " ".join(filtered).strip()
+        collapsed = re.sub(r"\s{2,}", " ", collapsed)
+        collapsed = re.sub(r"^\W+|\W+$", "", collapsed).strip()
+        if collapsed:
+            return collapsed
+        raw = " ".join(lines).strip()
+        raw_lower = raw.lower()
+        raw = re.sub(r"^\W+|\W+$", "", raw).strip()
+        if raw and not any(raw_lower.startswith(prefix) for prefix in blocked_prefixes) and not any(
+            token in raw_lower for token in blocked_contains
+        ):
+            return raw
+        return "질문 감사합니다. 조금 더 구체적으로 말씀해 주시면 바로 답변드릴게요."
 
 
 workflow_service = WorkflowService()

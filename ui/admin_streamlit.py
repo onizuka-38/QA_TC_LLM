@@ -94,6 +94,7 @@ st.caption("Document-grounded chat + structured QA workflow")
 
 api_base_url = st.sidebar.text_input("FastAPI Base URL", value="http://127.0.0.1:8010")
 requested_by = st.sidebar.text_input("Requested By", value="qa_user")
+show_chat_meta = st.sidebar.checkbox("Chat 메타데이터 표시", value=False)
 st.sidebar.caption("Ports: vLLM 8001 / FastAPI 8010 / Streamlit 8510")
 
 status_col1, status_col2, status_col3 = st.columns(3)
@@ -167,28 +168,30 @@ with left_col:
 
     with st.container(border=True):
         st.markdown('<div class="block-title">2) 챗봇형 문서 QA</div>', unsafe_allow_html=True)
-        st.markdown('<div class="muted">답변은 선택한 requirement와 문서 근거(source_chunks) 기반으로만 생성됩니다.</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="muted">일반 챗봇처럼 질문할 수 있고, 문서/Requirement를 선택하면 해당 문맥을 함께 참고합니다.</div>',
+            unsafe_allow_html=True,
+        )
 
         for row in st.session_state.chat_log[-12:]:
             with st.chat_message("user"):
                 st.write(str(row.get("question", "")))
             with st.chat_message("assistant"):
                 st.write(str(row.get("answer", "")))
-                st.caption(f"source_chunks: {row.get('source_chunks', [])}")
+                if show_chat_meta and row.get("source_chunks"):
+                    st.caption(f"source_chunks: {row.get('source_chunks', [])}")
 
         with st.form("chat_query_form", clear_on_submit=True):
+            st.caption("예시: REQ-102가 뭐야?")
             chat_prompt = st.text_area(
                 "질문 입력",
                 key="chat_prompt_input",
-                placeholder="예: REQ-100 기준 빠진 예외 케이스가 뭐야?",
                 height=90,
             )
             send_chat = st.form_submit_button("질문 보내기", type="primary", width="stretch")
 
         if send_chat:
-            if not st.session_state.document_ids:
-                st.warning("먼저 문서를 업로드하세요.")
-            elif not chat_prompt.strip():
+            if not chat_prompt.strip():
                 st.warning("질문을 입력하세요.")
             else:
                 payload = {
@@ -224,7 +227,7 @@ with right_col:
 
         user_prompt = st.text_area(
             "생성 보조 입력(user_prompt)",
-            value="선택된 requirement_id 각각에 대해 정상/오류/예외 관점으로 3~5개 TC를 제안해줘.",
+            value="선택한 requirement_id를 모두 커버하도록 테스트케이스를 생성해줘.",
             height=100,
         )
         target_case_count = st.selectbox("목표 TC 개수", options=[3, 4, 5], index=0)
@@ -327,7 +330,10 @@ with right_col:
                     resp = client.put(f"{api_base_url}/tc/drafts/{st.session_state.request_id}", json=payload)
                 if resp.status_code == 200:
                     st.session_state.draft_cases = resp.json().get("cases", [])
+                    st.session_state.review_completed = False
+                    st.session_state.export_bytes = b""
                     st.success("draft 저장 완료")
+                    st.info("draft를 수정했으므로 다시 '검토 완료(확정)'를 눌러야 export 가능합니다.")
                 else:
                     st.error(f"draft 저장 실패: {resp.status_code}")
                     st.code(resp.text)
@@ -336,7 +342,7 @@ with right_col:
 
     with st.container(border=True):
         st.markdown('<div class="block-title">5) Export + Preview</div>', unsafe_allow_html=True)
-        if st.button("export 조회", disabled=not st.session_state.review_completed, width="stretch"):
+        if st.button("export 조회", disabled=not bool(st.session_state.request_id), width="stretch"):
             with httpx.Client(timeout=120.0) as client:
                 resp = client.get(f"{api_base_url}/exports/{st.session_state.request_id}")
             content_type = resp.headers.get("content-type", "")
@@ -346,6 +352,8 @@ with right_col:
             else:
                 st.error("export 실패")
                 st.code(resp.text)
+                if resp.status_code == 404:
+                    st.info("검토 완료(확정) 이후에만 export를 받을 수 있습니다. draft 수정 후에는 다시 확정해 주세요.")
 
         if st.session_state.export_bytes:
             st.download_button(

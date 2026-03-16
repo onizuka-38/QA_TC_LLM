@@ -11,6 +11,7 @@ class Settings(BaseModel):
     generation_timeout_sec: float = 240.0
     generation_retry_count: int = 1
     max_concurrent_jobs: int = 5
+    vllm_debug_log_enabled: bool = False
 
     data_dir: Path = Path("data")
     sqlite_path: Path = Path("data/app.db")

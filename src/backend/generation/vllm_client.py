@@ -18,7 +18,8 @@ class VLLMClient:
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0,
-            "max_tokens": 300,
+            "max_tokens": 180,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         return await self._request_chat(payload=payload, request_tag=request_tag)
 
@@ -36,7 +37,8 @@ class VLLMClient:
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0,
-            "max_tokens": 1200,
+            "max_tokens": 800,
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         return await self._request_chat(payload=payload, request_tag=request_tag)
 

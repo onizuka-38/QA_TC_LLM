@@ -8,8 +8,6 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 @router.post("/query", response_model=ChatQueryResponse)
 async def query_chat(request: ChatQueryRequest) -> ChatQueryResponse:
-    if not request.document_ids:
-        raise HTTPException(status_code=400, detail="document_ids required")
     try:
         payload = await workflow_service.chat_query(
             document_ids=request.document_ids,

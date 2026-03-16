@@ -64,18 +64,17 @@ class ApiEndpointsTest(unittest.IsolatedAsyncioTestCase):
         by_chunk = {chunk.chunk_id: chunk.requirement_id for chunk in chunks}
         self.assertTrue(all(by_chunk.get(chunk_id) == "REQ-100" for chunk_id in response.source_chunks))
 
-    async def test_chat_query_review_needed_without_evidence(self) -> None:
-        with self.assertRaises(HTTPException) as ctx:
-            await query_chat(
-                ChatQueryRequest(
-                    document_ids=["missing-doc"],
-                    selected_requirement_ids=["REQ-100"],
-                    user_prompt="질문",
-                    requested_by="qa",
-                )
+    async def test_chat_query_fallback_without_evidence(self) -> None:
+        response = await query_chat(
+            ChatQueryRequest(
+                document_ids=["missing-doc"],
+                selected_requirement_ids=["REQ-100"],
+                user_prompt="질문",
+                requested_by="qa",
             )
-        self.assertEqual(ctx.exception.status_code, 409)
-        self.assertIn("REVIEW_NEEDED", str(ctx.exception.detail))
+        )
+        self.assertEqual(response.source_chunks, [])
+        self.assertIn("문서 근거", response.answer)
 
     async def test_generate_review_complete_export_flow(self) -> None:
         workflow_service._generator = StubGeneratorSuccess()

@@ -7,6 +7,7 @@ from src.backend.retrieval.vector_store import VectorStore
 def retrieve_chunks(
     chunks: list[ChunkMetadata],
     requirement_ids: list[str] | None = None,
+    user_query: str | None = None,
     top_k: int = 5,
     vector_store: VectorStore | None = None,
 ) -> list[ChunkMetadata]:
@@ -17,7 +18,7 @@ def retrieve_chunks(
             return selected[:top_k]
 
     if vector_store is not None:
-        query_text = " ".join(requirement_ids or []) or "requirements"
+        query_text = (user_query or "").strip() or " ".join(requirement_ids or []) or "requirements"
         vector_rows = vector_store.query(query_text=query_text, top_k=top_k)
         if vector_rows:
             return vector_rows
