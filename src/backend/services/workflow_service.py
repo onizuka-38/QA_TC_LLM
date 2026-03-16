@@ -117,15 +117,11 @@ class WorkflowService:
                 selected = [chunk for chunk in merged_chunks if chunk.requirement_id in selected_set]
             selected = self._limit_chunks_for_prompt(selected, max_per_requirement=1, max_total=8)
             if not selected:
-                self._mark_review_required(request_id, requested_by)
-                sqlite_store.save_tc_draft(request_id, [])
-                sqlite_store.set_review_state(request_id, is_reviewed=False, last_edited_at=None)
-                sqlite_store.save_validation(
-                    ValidationRecord(
-                        request_id=request_id,
-                        validated_at=datetime.now(timezone.utc),
-                        result=validate_tc_list([], requirement_ids=requirement_ids, target_case_count=target_case_count),
-                    )
+                self._save_empty_draft_review_required(
+                    request_id=request_id,
+                    requested_by=requested_by,
+                    requirement_ids=requirement_ids,
+                    target_case_count=target_case_count,
                 )
                 return request_id
 
@@ -152,15 +148,11 @@ class WorkflowService:
 
             cases, review_required = await self._generator.generate(selected, user_prompt=generation_prompt)
             if review_required:
-                self._mark_review_required(request_id, requested_by)
-                sqlite_store.save_tc_draft(request_id, [])
-                sqlite_store.set_review_state(request_id, is_reviewed=False, last_edited_at=None)
-                sqlite_store.save_validation(
-                    ValidationRecord(
-                        request_id=request_id,
-                        validated_at=datetime.now(timezone.utc),
-                        result=validate_tc_list([], requirement_ids=requirement_ids, target_case_count=target_case_count),
-                    )
+                self._save_empty_draft_review_required(
+                    request_id=request_id,
+                    requested_by=requested_by,
+                    requirement_ids=requirement_ids,
+                    target_case_count=target_case_count,
                 )
                 return request_id
 
@@ -215,6 +207,24 @@ class WorkflowService:
                 reviewer=requested_by,
                 reviewed_at=datetime.now(timezone.utc),
                 note="JSON 구조화 출력 실패 또는 검증 실패",
+            )
+        )
+
+    def _save_empty_draft_review_required(
+        self,
+        request_id: str,
+        requested_by: str,
+        requirement_ids: list[str],
+        target_case_count: int | None,
+    ) -> None:
+        self._mark_review_required(request_id, requested_by)
+        sqlite_store.save_tc_draft(request_id, [])
+        sqlite_store.set_review_state(request_id, is_reviewed=False, last_edited_at=None)
+        sqlite_store.save_validation(
+            ValidationRecord(
+                request_id=request_id,
+                validated_at=datetime.now(timezone.utc),
+                result=validate_tc_list([], requirement_ids=requirement_ids, target_case_count=target_case_count),
             )
         )
 
