@@ -44,10 +44,8 @@ class VLLMClient:
 
     async def _request_chat(self, payload: dict[str, object], request_tag: str) -> str:
         headers = {"Authorization": f"Bearer {settings.vllm_api_key}"}
-        debug_path: Path | None = None
-        if settings.vllm_debug_log_enabled:
-            debug_path = Path("data") / "vllm_debug.jsonl"
-            debug_path.parent.mkdir(parents=True, exist_ok=True)
+        debug_path = Path("data") / "vllm_debug.jsonl"
+        debug_path.parent.mkdir(parents=True, exist_ok=True)
         async with httpx.AsyncClient(timeout=settings.generation_timeout_sec) as client:
             try:
                 response = await client.post(
@@ -58,28 +56,26 @@ class VLLMClient:
                 response.raise_for_status()
                 data = response.json()
                 raw_content = data["choices"][0]["message"]["content"]
-                if debug_path is not None:
-                    debug_entry = {
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "request_tag": request_tag,
-                        "payload": payload,
-                        "raw_response": data,
-                        "raw_content": raw_content,
-                        "error": None,
-                    }
-                    with debug_path.open("a", encoding="utf-8") as fp:
-                        fp.write(json.dumps(debug_entry, ensure_ascii=False) + "\n")
+                debug_entry = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "request_tag": request_tag,
+                    "payload": payload,
+                    "raw_response": data,
+                    "raw_content": raw_content,
+                    "error": None,
+                }
+                with debug_path.open("a", encoding="utf-8") as fp:
+                    fp.write(json.dumps(debug_entry, ensure_ascii=False) + "\n")
                 return raw_content
             except Exception as exc:
-                if debug_path is not None:
-                    debug_entry = {
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "request_tag": request_tag,
-                        "payload": payload,
-                        "raw_response": None,
-                        "raw_content": None,
-                        "error": {"type": type(exc).__name__, "message": str(exc)},
-                    }
-                    with debug_path.open("a", encoding="utf-8") as fp:
-                        fp.write(json.dumps(debug_entry, ensure_ascii=False) + "\n")
+                debug_entry = {
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "request_tag": request_tag,
+                    "payload": payload,
+                    "raw_response": None,
+                    "raw_content": None,
+                    "error": {"type": type(exc).__name__, "message": str(exc)},
+                }
+                with debug_path.open("a", encoding="utf-8") as fp:
+                    fp.write(json.dumps(debug_entry, ensure_ascii=False) + "\n")
                 raise
