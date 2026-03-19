@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero-card">
+  <h1>문서 업로드</h1>
+  <p>요구사항 문서를 올리고 자동 추출된 requirement를 기반으로 작업을 시작하세요.</p>
+</section>
+
+<section class="card">
+  <form
+    hx-post="/app/partials/documents/upload"
+    hx-encoding="multipart/form-data"
+    hx-target="#documents-list"
+    hx-swap="outerHTML"
+    class="upload-form"
+  >
+    <input type="file" name="files" multiple required accept=".pdf,.docx,.xlsx" />
+    <input type="text" name="requested_by" value="qa_user" placeholder="요청자" />
+    <button type="submit">업로드</button>
+  </form>
+</section>
+
+<div id="documents-list">
+  {% include 'partials/documents_list.html' %}
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+<div class="section-head">
+  <h2>RTM</h2>
+  <button hx-get="/app/partials/jobs/{{ request_id }}/rtm" hx-target="#job-rtm" hx-swap="innerHTML">새로고침</button>
+</div>
+{% if rows %}
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>requirement_id</th><th>tc_id</th><th>coverage</th><th>duplicate</th><th>source_chunks</th></tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.requirement_id }}</td>
+        <td>{{ row.tc_id }}</td>
+        <td>{{ row.coverage_status.value }}</td>
+        <td>{{ row.duplicate_flag }}</td>
+        <td>{{ row.source_chunks|join(', ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">RTM rows 없음 (review 완료 + validation 통과 필요)</p>
+{% endif %}

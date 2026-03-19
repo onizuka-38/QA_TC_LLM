@@ -152,6 +152,42 @@ class SQLiteStore:
         )
         self._conn.commit()
 
+    def list_documents(self) -> list[dict[str, str]]:
+        rows = self._conn.execute(
+            """
+            SELECT document_id, filename, file_type, created_at
+            FROM documents
+            ORDER BY created_at DESC
+            """
+        ).fetchall()
+        return [
+            {
+                "document_id": str(row["document_id"]),
+                "filename": str(row["filename"]),
+                "file_type": str(row["file_type"]),
+                "created_at": str(row["created_at"]),
+            }
+            for row in rows
+        ]
+
+    def get_document(self, document_id: str) -> dict[str, str] | None:
+        row = self._conn.execute(
+            """
+            SELECT document_id, filename, file_type, created_at
+            FROM documents
+            WHERE document_id = ?
+            """,
+            (document_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "document_id": str(row["document_id"]),
+            "filename": str(row["filename"]),
+            "file_type": str(row["file_type"]),
+            "created_at": str(row["created_at"]),
+        }
+
     def save_normalized_document(self, document_id: str, payload: dict[str, object]) -> None:
         self._conn.execute(
             "INSERT OR REPLACE INTO normalized_documents(document_id, payload_json) VALUES (?, ?)",

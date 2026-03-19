@@ -1,0 +1,54 @@
+<div class="section-head">
+  <h2>Draft 편집</h2>
+  <button hx-get="/app/partials/drafts/{{ request_id }}/editor" hx-target="#draft-editor" hx-swap="innerHTML">새로고침</button>
+</div>
+{% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+
+{% if validation %}
+<p class="muted">현재 validation: <strong>{{ validation.result.is_valid }}</strong> ({{ validation.result.failure_action }})</p>
+{% endif %}
+
+{% if cases %}
+<form hx-post="/app/partials/drafts/{{ request_id }}/save" hx-target="#draft-editor" hx-swap="innerHTML" class="stack">
+  <input type="hidden" name="requested_by" value="qa_user" />
+  {% for case in cases %}
+  <article class="draft-card">
+    <div class="row two">
+      <label>TC ID<input name="tc_id" value="{{ case.tc_id }}" readonly /></label>
+      <label>Requirement ID<input name="requirement_id" value="{{ case.requirement_id }}" readonly /></label>
+    </div>
+    <label>Title<input name="feature_name" value="{{ case.feature_name }}" /></label>
+    <label>Preconditions (줄바꿈 분리)
+      <textarea name="preconditions_text">{{ case.preconditions|join('\n') }}</textarea>
+    </label>
+    <label>Test Steps (줄바꿈 분리)
+      <textarea name="test_steps_text">{{ case.test_steps|join('\n') }}</textarea>
+    </label>
+    <label>Test Data (줄바꿈 분리)
+      <textarea name="test_data_text">{{ case.test_data|join('\n') }}</textarea>
+    </label>
+    <label>Expected Result<textarea name="expected_result">{{ case.expected_result }}</textarea></label>
+    <div class="row three">
+      <label>Type<input name="test_type" value="{{ case.test_type }}" /></label>
+      <label>Priority<input name="priority" value="{{ case.priority }}" /></label>
+      <label>Review Status<input name="review_status" value="{{ case.review_status.value }}" /></label>
+    </div>
+    <label>Labels (콤마/줄바꿈 분리)<textarea name="labels_text">{{ case.labels|join(', ') }}</textarea></label>
+    <label>Notes<textarea name="notes">{{ case.notes or '' }}</textarea></label>
+    <label>Source Chunks (콤마/줄바꿈 분리)<textarea name="source_chunks_text">{{ case.source_chunks|join(', ') }}</textarea></label>
+  </article>
+  {% endfor %}
+  <div class="action-row">
+    <button type="submit">Draft 저장</button>
+  </div>
+</form>
+
+<form hx-post="/app/partials/drafts/{{ request_id }}/complete" hx-target="#complete-result" hx-swap="innerHTML" class="action-row">
+  <input type="hidden" name="requested_by" value="qa_user" />
+  <button type="submit">검토 완료</button>
+  <a class="btn-link" href="/app/jobs/{{ request_id }}">Job Status</a>
+</form>
+<div id="complete-result"></div>
+{% else %}
+<p class="muted">draft not found</p>
+{% endif %}

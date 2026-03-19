@@ -77,6 +77,12 @@ class WorkflowService:
         sqlite_store.append_audit(build_audit_record("-", "upload", "completed", settings.model_name, requested_by))
         return results
 
+    def list_documents(self) -> list[dict[str, str]]:
+        return sqlite_store.list_documents()
+
+    def get_document(self, document_id: str) -> dict[str, str] | None:
+        return sqlite_store.get_document(document_id)
+
     async def generate(
         self,
         document_ids: list[str],
@@ -301,6 +307,9 @@ class WorkflowService:
 
     def get_validation(self, request_id: str) -> ValidationRecord | None:
         return sqlite_store.get_validation(request_id)
+
+    def get_review_state(self, request_id: str) -> dict[str, object] | None:
+        return sqlite_store.get_review_state(request_id)
 
     def get_rtm(self, request_id: str) -> list[RTMRow]:
         review_state = sqlite_store.get_review_state(request_id)

@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block content %}
+{% if not document %}
+<section class="hero-card">
+  <h1>Workspace</h1>
+  <p>먼저 Documents에서 문서를 선택하세요.</p>
+  <a class="btn" href="/app/documents">문서 목록으로</a>
+</section>
+{% else %}
+<section class="hero-card">
+  <h1>Workspace</h1>
+  <p>{{ document.filename }} · 문서 기반 채팅 + 구조화 생성</p>
+</section>
+
+<div class="workspace-grid">
+  <section class="card chat-card">
+    <div class="section-head"><h2>Grounded Chat</h2></div>
+    <div id="chat-log" class="chat-log"></div>
+    <div id="chat-status" class="muted"></div>
+    <form
+      data-chat-form="true"
+      class="chat-form"
+      hx-post="/app/partials/chat/query"
+      hx-target="#chat-log"
+      hx-swap="beforeend"
+      hx-include="#req-selector input[name='requirement_ids']:checked"
+    >
+      <input type="hidden" name="document_id" value="{{ document_id }}" />
+      <input type="hidden" name="requested_by" value="{{ requested_by }}" />
+      <textarea name="user_prompt" placeholder="질문을 입력하세요" required></textarea>
+      <button type="submit">질문 보내기</button>
+    </form>
+  </section>
+
+  <section class="card flow-card">
+    <div class="section-head"><h2>TC 생성 Workflow</h2></div>
+    <h3>Requirement 선택</h3>
+    {% include 'partials/requirements_selector.html' %}
+
+    <form
+      data-generate-form="true"
+      data-status-target="#generate-status"
+      hx-post="/app/partials/tc/generate"
+      hx-target="#generation-result"
+      hx-swap="innerHTML"
+      hx-include="#req-selector input[name='requirement_ids']:checked"
+      class="gen-form"
+      hx-indicator="#generate-indicator"
+    >
+      <input type="hidden" name="document_id" value="{{ document_id }}" />
+      <input type="hidden" name="requested_by" value="{{ requested_by }}" />
+      <label>생성 보조 입력</label>
+      <textarea name="user_prompt">선택한 requirement_id를 모두 커버하는 테스트케이스를 생성해줘.</textarea>
+      <label>목표 TC 개수</label>
+      <select name="target_case_count">
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+      </select>
+      <button type="submit">TC 생성</button>
+      <div id="generate-indicator" class="muted htmx-indicator">TC 생성 중입니다... (최대 1~2분)</div>
+    </form>
+    <div id="generate-status" class="muted"></div>
+
+    <div id="generation-result" class="result-block muted">생성 결과가 여기에 표시됩니다.</div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,39 @@
+<div class="section-head">
+  <h2>요약</h2>
+  <button hx-get="/app/partials/jobs/{{ request_id }}/summary" hx-target="#job-summary" hx-swap="innerHTML">새로고침</button>
+</div>
+{% if job %}
+<ul class="kv-list">
+  <li><span>상태</span><strong>{{ job.status.value }}</strong></li>
+  <li><span>생성 시각</span><strong>{{ job.created_at }}</strong></li>
+  <li><span>TC 개수</span><strong>{{ job.tc_count or 0 }}</strong></li>
+  <li><span>검토 완료</span><strong>{{ 'yes' if review_state and review_state.is_reviewed else 'no' }}</strong></li>
+  <li><span>Validation 통과</span><strong>{{ 'yes' if validation and validation.result.is_valid else 'no' }}</strong></li>
+  <li><span>Export 가능</span><strong>{{ 'yes' if can_export else 'no' }}</strong></li>
+</ul>
+
+<div class="gate-list">
+  <div class="gate-item {% if job.status.value == 'completed' %}ok{% endif %}">
+    1) 생성 완료 (status=completed)
+  </div>
+  <div class="gate-item {% if review_state and review_state.is_reviewed %}ok{% endif %}">
+    2) Draft 검토 완료
+  </div>
+  <div class="gate-item {% if validation and validation.result.is_valid %}ok{% endif %}">
+    3) Validation 통과
+  </div>
+  <div class="gate-item {% if can_export %}ok{% endif %}">
+    4) Export 다운로드 가능
+  </div>
+</div>
+{% else %}
+<p class="muted">job not found</p>
+{% endif %}
+<div class="action-row">
+  <a class="btn-link" href="/app/drafts/{{ request_id }}">Draft Review 이동</a>
+  {% if can_export %}
+  <a class="btn-link" href="/exports/{{ request_id }}">Export 다운로드</a>
+  {% else %}
+  <span class="muted">Export 대기: 검토 완료 + validation 통과 필요</span>
+  {% endif %}
+</div>

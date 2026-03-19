@@ -1,0 +1,5 @@
+<div class="{% if is_error %}notice-error{% else %}notice{% endif %}">{{ message }}</div>
+<div class="action-row">
+  <a class="btn-link" href="/app/drafts/{{ request_id }}">Draft Review로 돌아가기</a>
+  <a class="btn-link" href="/app/jobs/{{ request_id }}">job_status에서 validation/RTM/export 확인</a>
+</div>

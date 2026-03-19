@@ -1,0 +1,24 @@
+<div class="section-head">
+  <h2>Validation</h2>
+  <button hx-get="/app/partials/jobs/{{ request_id }}/validation" hx-target="#job-validation" hx-swap="innerHTML">새로고침</button>
+</div>
+{% if validation %}
+<p><strong>is_valid:</strong> {{ validation.result.is_valid }}</p>
+<p><strong>failure_action:</strong> {{ validation.result.failure_action }}</p>
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>rule</th><th>passed</th><th>message</th></tr></thead>
+    <tbody>
+      {% for check in validation.result.checks %}
+      <tr>
+        <td>{{ check.rule }}</td>
+        <td>{{ check.passed }}</td>
+        <td>{{ check.message or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="muted">validation not found</p>
+{% endif %}

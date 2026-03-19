@@ -1,0 +1,32 @@
+<section class="card">
+  <div class="section-head">
+    <h2>문서 목록</h2>
+    {% if notice %}<span class="notice">{{ notice }}</span>{% endif %}
+  </div>
+  {% if documents %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Filename</th>
+          <th>Type</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+        <tr>
+          <td>{{ doc.filename }}</td>
+          <td>{{ doc.file_type }}</td>
+          <td>{{ doc.created_at }}</td>
+          <td><a class="btn-link" href="/app/documents/{{ doc.document_id }}">열기</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">업로드된 문서가 없습니다.</p>
+  {% endif %}
+</section>

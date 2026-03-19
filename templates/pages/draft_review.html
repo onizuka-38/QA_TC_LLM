@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero-card">
+  <h1>Draft Review</h1>
+  <p>request_id: <code>{{ request_id }}</code></p>
+</section>
+
+<section id="draft-editor" class="card">
+  {% include 'partials/draft_editor.html' %}
+</section>
+{% endblock %}

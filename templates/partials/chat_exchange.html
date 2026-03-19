@@ -1,0 +1,16 @@
+{% if question %}
+<div class="exchange user">
+  <div class="avatar">나</div>
+  <div class="message">
+    <div class="bubble">{{ question }}</div>
+    <div class="meta">{{ time }}</div>
+  </div>
+</div>
+{% endif %}
+<div class="exchange assistant">
+  <div class="avatar">AI</div>
+  <div class="message">
+    <div class="bubble {% if is_error %}error{% endif %}">{{ answer }}</div>
+    {% if source_chunks %}<div class="meta">source_chunks: {{ source_chunks|join(', ') }}</div>{% endif %}
+  </div>
+</div>

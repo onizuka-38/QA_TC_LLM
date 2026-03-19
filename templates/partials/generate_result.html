@@ -1,0 +1,24 @@
+<div class="result-ok">
+  <p><strong>request_id:</strong> <code>{{ request_id }}</code></p>
+  <p><strong>status:</strong> {{ status }}</p>
+  {% if status in ['queued', 'processing'] %}
+  <p class="muted">생성 진행 중입니다. 아래 요약이 자동 갱신됩니다.</p>
+  {% elif status == 'review_required' %}
+  <p class="muted">생성은 완료됐지만 검토가 필요합니다. Draft에서 수정 후 검토 완료를 진행하세요.</p>
+  {% elif status == 'completed' %}
+  <p class="muted">생성이 완료되었습니다. Draft 검토 완료 후 Export 가능합니다.</p>
+  {% endif %}
+
+  <div
+    id="generate-summary-{{ request_id }}"
+    class="result-block"
+    hx-get="/app/partials/jobs/{{ request_id }}/summary"
+    hx-trigger="load, every 4s"
+    hx-swap="innerHTML"
+  ></div>
+
+  <div class="action-row">
+    <a class="btn-link" href="/app/jobs/{{ request_id }}">job_status 보기</a>
+    <a class="btn-link" href="/app/drafts/{{ request_id }}">draft_review 보기</a>
+  </div>
+</div>

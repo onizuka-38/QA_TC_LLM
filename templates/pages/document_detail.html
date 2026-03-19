@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero-card">
+  <h1>{{ document.filename }}</h1>
+  <p>문서 ID: <code>{{ document.document_id }}</code></p>
+  <div class="action-row">
+    <a class="btn" href="/app/workspace?document_id={{ document.document_id }}">Workspace 이동</a>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-head"><h2>추출된 Requirement</h2></div>
+  {% if requirements %}
+  <div class="chip-grid">
+    {% for req in requirements %}
+    <div class="chip-card">
+      <strong>{{ req.requirement_id }}</strong>
+      <small>{{ req.source_doc }}</small>
+      <small>chunks: {{ req.source_chunks|length }}</small>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">Requirement가 아직 추출되지 않았습니다.</p>
+  {% endif %}
+</section>
+{% endblock %}

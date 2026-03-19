@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero-card">
+  <h1>Job Status</h1>
+  <p>request_id: <code>{{ request_id }}</code></p>
+  <div class="action-row">
+    <a class="btn" href="/app/drafts/{{ request_id }}">Draft Review 이동</a>
+  </div>
+</section>
+
+<div class="stack">
+  <section class="card" id="job-summary" hx-get="/app/partials/jobs/{{ request_id }}/summary" hx-trigger="load"></section>
+  <section class="card" id="job-validation" hx-get="/app/partials/jobs/{{ request_id }}/validation" hx-trigger="load"></section>
+  <section class="card" id="job-rtm" hx-get="/app/partials/jobs/{{ request_id }}/rtm" hx-trigger="load"></section>
+</div>
+{% endblock %}

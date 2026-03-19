@@ -1,0 +1,11 @@
+<div id="req-selector" class="req-selector">
+  {% for req in requirements %}
+  <label class="req-item">
+    <input type="checkbox" name="requirement_ids" value="{{ req.requirement_id }}" />
+    <span>{{ req.requirement_id }}</span>
+  </label>
+  {% endfor %}
+</div>
+{% if not requirements %}
+<p class="muted">선택된 문서에서 requirement를 찾지 못했습니다.</p>
+{% endif %}

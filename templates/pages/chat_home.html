@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="chat-shell">
+  <aside class="chat-context card">
+    <div class="section-head">
+      <h2>컨텍스트</h2>
+      <a class="btn-link" href="/app/documents">문서 관리</a>
+    </div>
+
+    <label>문서 선택</label>
+    <select
+      id="chat-document-id"
+      name="document_id"
+      hx-get="/app/partials/requirements/by-document"
+      hx-target="#chat-req-selector"
+      hx-trigger="change"
+      hx-include="#chat-document-id"
+    >
+      <option value="">문서를 선택하세요</option>
+      {% for doc in documents %}
+      <option value="{{ doc.document_id }}">{{ doc.filename }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="muted small-gap">Requirement 선택</div>
+    <div id="chat-req-selector">
+      {% include 'partials/requirements_selector.html' with context %}
+    </div>
+
+    <div class="action-stack">
+      <form method="get" action="/app/workspace" class="action-stack" id="workspace-jump-form">
+        <input type="hidden" id="workspace-document-id" name="document_id" value="" />
+        <button type="submit">구조화 워크플로우로 이동</button>
+      </form>
+      <p class="muted">채팅 중 생성이 필요하면 문서를 선택한 뒤 Workspace에서 TC를 생성하세요.</p>
+    </div>
+  </aside>
+
+  <section class="chat-main card">
+    <div class="chat-main-head">
+      <h1>문서 기반 AI Assistant</h1>
+      <p>문서/requirement를 선택하면 해당 근거 중심으로 답변합니다.</p>
+    </div>
+
+    <div id="chat-log" class="chat-log chat-log-lg"></div>
+    <div id="chat-status" class="muted"></div>
+
+    <form
+      id="chat-home-form"
+      class="chat-input-bar"
+      data-chat-form="true"
+      hx-post="/app/partials/chat/query"
+      hx-target="#chat-log"
+      hx-swap="beforeend"
+      hx-include="#chat-document-id, #chat-req-selector input[name='requirement_ids']:checked"
+    >
+      <input type="hidden" name="requested_by" value="{{ requested_by }}" />
+      <textarea
+        id="chat-home-input"
+        name="user_prompt"
+        placeholder="질문을 입력하세요. 예: REQ-102의 핵심 요구사항이 뭐야?"
+        required
+      ></textarea>
+      <button type="submit">전송</button>
+    </form>
+  </section>
+</section>
+{% endblock %}
